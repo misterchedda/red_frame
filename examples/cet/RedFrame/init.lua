@@ -5,12 +5,38 @@ local logPrefix = "[" .. modName .. "] "
 local overlayOpen = false
 local buttonWidth = 150
 
+local screenshotModes = {
+    { label = "NORMAL", valueName = "NORMAL" },
+    { label = "NORMAL_MULTISAMPLE", valueName = "NORMAL_MULTISAMPLE" },
+    { label = "HIGH_RESOLUTION", valueName = "HIGH_RESOLUTION" },
+    { label = "HIGH_RESOLUTION_LAYERED", valueName = "HIGH_RESOLUTION_LAYERED" },
+}
+
+local saveFormats = {
+    { label = "SF_PNG", valueName = "SF_PNG", extension = ".png" },
+    { label = "SF_EXR", valueName = "SF_EXR", extension = ".exr" },
+    { label = "SF_PNG_AND_EXR", valueName = "SF_PNG_AND_EXR", extension = ".png" },
+}
+
+local resolutions = {
+    { label = "_1280x720", valueName = "_1280x720" },
+    { label = "_2560x1080", valueName = "_2560x1080" },
+    { label = "_3440x1440", valueName = "_3440x1440" },
+    { label = "_3840x1600", valueName = "_3840x1600" },
+}
+
+local resolutionMultipliers = {
+    { label = "X1", valueName = "X1" },
+    { label = "X2", valueName = "X2" },
+    { label = "X4", valueName = "X4" },
+}
+
 local state = {
     fps = 0,
-    screenshotMode = 1,
-    saveFormat = 2,
-    resolution = 5,
-    resolutionMultiplier = 1,
+    screenshotModeIndex = 1,
+    saveFormatIndex = 1,
+    resolutionIndex = 1,
+    resolutionMultiplierIndex = 1,
     forceLOD0 = false,
     status = "Waiting for input.",
     audioActive = false,
@@ -124,25 +150,72 @@ local function setStatus(message, isError)
     end
 end
 
+local function getEnumValue(enumType, option)
+    if enumType ~= nil and option ~= nil and option.valueName ~= nil then
+        local value = enumType[option.valueName]
+        if value ~= nil then
+            return value
+        end
+    end
+
+    return nil
+end
+
+local function selectedOption(options, index)
+    return options[index] or options[1]
+end
+
+local function drawEnumCombo(label, options, selectedIndex)
+    local selected = selectedOption(options, selectedIndex)
+
+    if ImGui.BeginCombo(label, selected.label) then
+        for index, option in ipairs(options) do
+            local isSelected = index == selectedIndex
+            if ImGui.Selectable(option.label, isSelected) then
+                selectedIndex = index
+            end
+            if isSelected then
+                ImGui.SetItemDefaultFocus()
+            end
+        end
+        ImGui.EndCombo()
+    end
+
+    return selectedIndex
+end
+
 local function takeScreenshot()
     if not hasScreenshotBindings() then
         setStatus("Screenshot bindings are not available.", true)
         return
     end
 
-    local extension = state.saveFormat == 32 and ".exr" or ".png"
-    local outputPath = string.format("CET/take_%s_m%d_f%d_r%d_x%d%s",
+    local mode = selectedOption(screenshotModes, state.screenshotModeIndex)
+    local format = selectedOption(saveFormats, state.saveFormatIndex)
+    local resolution = selectedOption(resolutions, state.resolutionIndex)
+    local multiplier = selectedOption(resolutionMultipliers, state.resolutionMultiplierIndex)
+    local modeValue = getEnumValue(rendScreenshotMode, mode)
+    local formatValue = getEnumValue(ESaveFormat, format)
+    local resolutionValue = getEnumValue(renddimEPreset, resolution)
+    local multiplierValue = getEnumValue(rendResolutionMultiplier, multiplier)
+
+    if modeValue == nil or formatValue == nil or resolutionValue == nil or multiplierValue == nil then
+        setStatus("CET enum globals are not available yet.", true)
+        return
+    end
+
+    local outputPath = string.format("CET/take_%s_%s_%s_%s_%s%s",
         timestamp(),
-        state.screenshotMode,
-        state.saveFormat,
-        state.resolution,
-        state.resolutionMultiplier,
-        extension)
+        mode.label,
+        format.label,
+        resolution.label,
+        multiplier.label,
+        format.extension)
     local requestId = screenshotApi().Take(outputPath,
-        state.screenshotMode,
-        state.saveFormat,
-        state.resolution,
-        state.resolutionMultiplier,
+        modeValue,
+        formatValue,
+        resolutionValue,
+        multiplierValue,
         state.forceLOD0)
     state.screenshotRequestId = requestId
     refreshState()
@@ -236,26 +309,26 @@ local function drawWindow()
     ImGui.Separator()
 
     ImGui.Text("Screenshot")
-    state.screenshotMode = ImGui.InputInt("Mode", state.screenshotMode, 1, 1)
-    state.saveFormat = ImGui.InputInt("Format", state.saveFormat, 1, 1)
-    state.resolution = ImGui.InputInt("Resolution", state.resolution, 1, 1)
-    state.resolutionMultiplier = ImGui.InputInt("Multiplier", state.resolutionMultiplier, 1, 1)
+    state.screenshotModeIndex = drawEnumCombo("Mode", screenshotModes, state.screenshotModeIndex)
+    state.saveFormatIndex = drawEnumCombo("Format", saveFormats, state.saveFormatIndex)
+    state.resolutionIndex = drawEnumCombo("Resolution", resolutions, state.resolutionIndex)
+    state.resolutionMultiplierIndex = drawEnumCombo("Multiplier", resolutionMultipliers, state.resolutionMultiplierIndex)
     state.forceLOD0 = ImGui.Checkbox("Force LOD0", state.forceLOD0)
 
     if ImGui.Button("Set PNG", buttonWidth, 0) then
-        state.screenshotMode = 1
-        state.saveFormat = 2
-        state.resolution = 5
-        state.resolutionMultiplier = 1
+        state.screenshotModeIndex = 1
+        state.saveFormatIndex = 1
+        state.resolutionIndex = 1
+        state.resolutionMultiplierIndex = 1
         setStatus("PNG preset selected.", false)
     end
 
     ImGui.SameLine()
     if ImGui.Button("Set EXR", buttonWidth, 0) then
-        state.screenshotMode = 5
-        state.saveFormat = 32
-        state.resolution = 5
-        state.resolutionMultiplier = 1
+        state.screenshotModeIndex = 3
+        state.saveFormatIndex = 2
+        state.resolutionIndex = 1
+        state.resolutionMultiplierIndex = 1
         setStatus("EXR preset selected.", false)
     end
 

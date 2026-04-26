@@ -114,7 +114,7 @@ void RedFrameAutoRunScreenshotMatrix(RED4ext::IScriptable* aContext,
     RED4EXT_UNUSED_PARAMETER(a4);
     aFrame->code++;
 
-    bool success = true;
+    bool success = false;
     if (g_autoRunConfig.screenshotMatrix)
     {
         if (g_autoRunConfig.probeScreenshotOutputSubmit)
@@ -129,6 +129,39 @@ void RedFrameAutoRunScreenshotMatrix(RED4ext::IScriptable* aContext,
     {
         *aOut = success;
     }
+}
+
+void RedFrameHarnessReportScreenshotListener(RED4ext::IScriptable* aContext,
+                                             RED4ext::CStackFrame* aFrame,
+                                             void* aOut,
+                                             int64_t a4)
+{
+    RED4EXT_UNUSED_PARAMETER(aContext);
+    RED4EXT_UNUSED_PARAMETER(aOut);
+    RED4EXT_UNUSED_PARAMETER(a4);
+
+    std::int32_t listenerId = 0;
+    std::int32_t requestId = 0;
+    std::int32_t status = 0;
+    std::int32_t error = 0;
+    RED4ext::CString primaryPath;
+    std::int32_t pathCount = 0;
+
+    RED4ext::GetParameter(aFrame, &listenerId);
+    RED4ext::GetParameter(aFrame, &requestId);
+    RED4ext::GetParameter(aFrame, &status);
+    RED4ext::GetParameter(aFrame, &error);
+    RED4ext::GetParameter(aFrame, &primaryPath);
+    RED4ext::GetParameter(aFrame, &pathCount);
+    aFrame->code++;
+
+    LogWarn("Redscript screenshot listener fired: listener=%d request=%d status=%d error=%d pathCount=%d primary=%s",
+            listenerId,
+            requestId,
+            status,
+            error,
+            pathCount,
+            primaryPath.c_str());
 }
 
 void RedFrameIsAutoRunEnabled(RED4ext::IScriptable* aContext, RED4ext::CStackFrame* aFrame, bool* aOut, int64_t a4)
@@ -355,14 +388,11 @@ bool RunningStateOnUpdate(RED4ext::CGameApplication* aApp)
 {
     RED4EXT_UNUSED_PARAMETER(aApp);
 
+    PumpScreenshotRequests();
+
     if (!g_nativeAutoRunActive)
     {
         return true;
-    }
-
-    for (auto& request : g_screenshotRequests)
-    {
-        UpdateScreenshotRequestStatus(request);
     }
 
     const auto now = Clock::now();

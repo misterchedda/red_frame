@@ -64,6 +64,7 @@ RED4EXT_C_EXPORT bool RED4EXT_CALL Main(RED4ext::v1::PluginHandle aHandle, RED4e
         StopActiveCapture();
         StopAudioSidecarCapture();
         WaitCaptureOutputFinalizer();
+        ClearScreenshotListeners();
         DetachImageSavingJobProbe();
         DetachScreenshotOutputSubmitProbe();
         DetachScreenshotFileProbe();

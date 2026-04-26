@@ -117,10 +117,10 @@ void RedFrameCaptureScreenshot(RED4ext::IScriptable* aContext, RED4ext::CStackFr
     RED4EXT_UNUSED_PARAMETER(a4);
 
     RED4ext::CString outputPath;
-    std::int32_t mode = static_cast<std::int32_t>(RED4ext::rend::ScreenshotMode::NORMAL);
-    std::int32_t saveFormat = static_cast<std::int32_t>(RED4ext::ESaveFormat::SF_PNG);
-    std::int32_t resolution = static_cast<std::int32_t>(RED4ext::rend::dim::EPreset::_1280x720);
-    std::int32_t resolutionMultiplier = static_cast<std::int32_t>(RED4ext::rend::ResolutionMultiplier::X1);
+    auto mode = RED4ext::rend::ScreenshotMode::NORMAL;
+    auto saveFormat = RED4ext::ESaveFormat::SF_PNG;
+    auto resolution = RED4ext::rend::dim::EPreset::_1280x720;
+    auto resolutionMultiplier = RED4ext::rend::ResolutionMultiplier::X1;
     bool forceLOD0 = false;
 
     RED4ext::GetParameter(aFrame, &outputPath);
@@ -143,7 +143,12 @@ void RedFrameCaptureScreenshot(RED4ext::IScriptable* aContext, RED4ext::CStackFr
         return;
     }
 
-    const auto requestId = QueueScreenshot(*resolvedPath, mode, saveFormat, resolution, resolutionMultiplier, forceLOD0);
+    const auto requestId = QueueScreenshot(*resolvedPath,
+                                           static_cast<std::int32_t>(mode),
+                                           static_cast<std::int32_t>(saveFormat),
+                                           static_cast<std::int32_t>(resolution),
+                                           static_cast<std::int32_t>(resolutionMultiplier),
+                                           forceLOD0);
     if (requestId <= 0)
     {
         g_screenshotLastError = kCaptureErrorScreenshotFailed;
@@ -384,6 +389,56 @@ void RedFrameScreenshotGetRequestPathAt(RED4ext::IScriptable* aContext,
 
         *aOut = RED4ext::CString(request->outputPaths[static_cast<std::size_t>(index)].string().c_str());
     }
+}
+
+void RedFrameScreenshotRegisterListener(RED4ext::IScriptable* aContext,
+                                        RED4ext::CStackFrame* aFrame,
+                                        std::int32_t* aOut,
+                                        int64_t a4)
+{
+    RED4EXT_UNUSED_PARAMETER(aContext);
+    RED4EXT_UNUSED_PARAMETER(a4);
+
+    RED4ext::Handle<RED4ext::IScriptable> target;
+    RED4ext::CName functionName;
+    RED4ext::GetParameter(aFrame, &target);
+    RED4ext::GetParameter(aFrame, &functionName);
+    aFrame->code++;
+
+    const auto listenerId = RegisterScreenshotListener(target, functionName);
+    if (aOut)
+    {
+        *aOut = listenerId;
+    }
+}
+
+void RedFrameScreenshotUnregisterListener(RED4ext::IScriptable* aContext,
+                                          RED4ext::CStackFrame* aFrame,
+                                          bool* aOut,
+                                          int64_t a4)
+{
+    RED4EXT_UNUSED_PARAMETER(aContext);
+    RED4EXT_UNUSED_PARAMETER(a4);
+
+    std::int32_t listenerId = 0;
+    RED4ext::GetParameter(aFrame, &listenerId);
+    aFrame->code++;
+
+    const auto removed = UnregisterScreenshotListener(listenerId);
+    if (aOut)
+    {
+        *aOut = removed;
+    }
+}
+
+void RedFrameScreenshotPump(RED4ext::IScriptable* aContext, RED4ext::CStackFrame* aFrame, void* aOut, int64_t a4)
+{
+    RED4EXT_UNUSED_PARAMETER(aContext);
+    RED4EXT_UNUSED_PARAMETER(aOut);
+    RED4EXT_UNUSED_PARAMETER(a4);
+    aFrame->code++;
+
+    PumpScreenshotRequests();
 }
 
 void RedFrameAudioIsActive(RED4ext::IScriptable* aContext, RED4ext::CStackFrame* aFrame, bool* aOut, int64_t a4)

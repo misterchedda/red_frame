@@ -3,7 +3,7 @@
 RedFrame is a RED4ext plugin for Cyberpunk 2077 screenshot and audio capture.
 
 > [!NOTE]
-> RedFrame is in alpha. APIs, output formats, and capture behavior may change between builds.
+> RedFrame is in alpha. API may break between builds.
 
 Current game version supported: 2.31.
 
@@ -44,12 +44,14 @@ Examples for redscript and cet usage under `examples/`
 module RedFrame
 
 public native class Screenshot {
-  public static native func Take(outputPath: String, mode: Int32, saveFormat: Int32, resolution: Int32, resolutionMultiplier: Int32, forceLOD0: Bool) -> Int32
+  public static native func Take(outputPath: String, mode: rendScreenshotMode, saveFormat: ESaveFormat, resolution: renddimEPreset, resolutionMultiplier: rendResolutionMultiplier, forceLOD0: Bool) -> Int32
   public static native func GetRequestStatus(requestId: Int32) -> Int32
   public static native func GetRequestError(requestId: Int32) -> Int32
   public static native func GetRequestPath(requestId: Int32) -> String
   public static native func GetRequestPathCount(requestId: Int32) -> Int32
   public static native func GetRequestPathAt(requestId: Int32, index: Int32) -> String
+  public static native func RegisterListener(target: ref<IScriptable>, functionName: CName) -> Int32
+  public static native func UnregisterListener(listenerId: Int32) -> Bool
   public static native func GetLastError() -> Int32
 }
 
@@ -74,12 +76,13 @@ public native class Debug {
 ```swift
 import RedFrame.Screenshot
 
-let requestId = Screenshot.Take("MyMod/shot_0001", 1, 2, 5, 1, false);
+let requestId = Screenshot.Take("MyMod/shot_0001", rendScreenshotMode.NORMAL, ESaveFormat.SF_PNG, renddimEPreset._1280x720, rendResolutionMultiplier.X1, false);
 ```
 
 `Take` returns a request id. A value greater than `0` means the request was
 queued; `0` means it failed before queueing. Use `GetLastError()` for the
-immediate failure reason, and poll the request id for completion.
+immediate failure reason. You can either poll the request id or register a
+listener for terminal request events.
 
 Request status values:
 
@@ -103,10 +106,10 @@ For PNG output:
 ```swift
 Screenshot.Take(
   "MyMod/shot_0001.png",
-  1, // normal screenshot mode
-  2, // PNG
-  5, // resolution preset
-  1, // 1x multiplier
+  rendScreenshotMode.NORMAL,
+  ESaveFormat.SF_PNG,
+  renddimEPreset._1280x720,
+  rendResolutionMultiplier.X1,
   false // force LOD0
 );
 ```
@@ -116,25 +119,25 @@ For EXR output:
 ```swift
 Screenshot.Take(
   "MyMod/shot_0001.exr",
-  5,  // high-resolution screenshot mode
-  32, // EXR
-  5,  // resolution preset
-  1,  // 1x multiplier
+  rendScreenshotMode.HIGH_RESOLUTION,
+  ESaveFormat.SF_EXR,
+  renddimEPreset._1280x720,
+  rendResolutionMultiplier.X1,
   true // force LOD0
 );
 ```
 
 `Take` passes renderer options through to the engine. RedFrame validates the
-output path sandbox, but does not validate these enum values. Unknown or invalid
-combinations may fail, write a different filename/extension than requested, or
-use engine fallback behavior.
+output path sandbox, but otherwise exposes the engine enums directly. Unusual
+enum combinations may fail, write a different filename/extension than requested,
+or use engine fallback behavior.
 
 Known useful values:
 
-- modes: `1` normal, `2` normal multisample, `5` high-resolution, `6` high-resolution layered
-- save formats: `2` PNG, `32` EXR, `34` PNG and EXR
-- resolution presets: `5` 1280x720, `8` 2560x1080, `11` 3440x1440, `12` 3840x1600
-- multipliers: `1`, `2`, `4`
+- modes: `rendScreenshotMode.NORMAL`, `NORMAL_MULTISAMPLE`, `HIGH_RESOLUTION`, `HIGH_RESOLUTION_LAYERED`
+- save formats: `ESaveFormat.SF_PNG`, `SF_EXR`, `SF_PNG_AND_EXR`
+- resolution presets: `renddimEPreset._1280x720`, `_2560x1080`, `_3440x1440`, `_3840x1600`
+- multipliers: `rendResolutionMultiplier.X1`, `X2`, `X4`
 - `forceLOD0`: asks the screenshot renderer to prefer highest LOD assets
 
 The engine may append suffixes such as `HIGH_RES_EMM_None_None.exr`. Always use
@@ -146,24 +149,52 @@ the number of discovered output files, and `GetRequestPathAt(requestId, index)`
 returns each actual path using zero-based indexes. `GetRequestPath(requestId)`
 is a convenience alias for `GetRequestPathAt(requestId, 0)`.
 
-Request status becomes complete once the currently discovered output set has
-stabilized. For multi-output or very large captures, RedFrame keeps discovering
-late companion files for a short grace window after completion, so callers that
-need every output should enumerate paths after completion and may poll again a
-moment later.
+Request status becomes complete once RedFrame observes the engine close the
+expected output file handles. For multi-output or very large captures, RedFrame
+keeps discovering late companion files for a short grace window after
+completion, so callers that need every output should enumerate paths after
+completion and may poll again a moment later.
+
+Listener callbacks are delivered by RedFrame's bundled redscript pump service
+when a request reaches a terminal status: complete, failed, or timed out. The
+listener method must accept `(requestId: Int32, status: Int32, error: Int32)`
+and return `Void`.
+
+```swift
+import RedFrame.Screenshot
+
+public class MyScreenshotListener {
+  private let listenerId: Int32;
+
+  public func Start() {
+    this.listenerId = Screenshot.RegisterListener(this, n"OnScreenshotFinished");
+  }
+
+  public func Stop() {
+    Screenshot.UnregisterListener(this.listenerId);
+  }
+
+  public func OnScreenshotFinished(requestId: Int32, status: Int32, error: Int32) -> Void {
+    if Equals(status, 3) {
+      let primaryPath = Screenshot.GetRequestPath(requestId);
+      let pathCount = Screenshot.GetRequestPathCount(requestId);
+    }
+  }
+}
+```
 
 Observed on Cyberpunk 2077 2.31:
 
 | Options | Output |
 | --- | --- |
-| `1, 2, 5, 1` | PNG beauty frame |
-| `2, 2, 5, 1` | PNG with high-res naming suffix |
-| `5, 2, 5, 1` | PNG with high-res naming suffix |
-| `5, 32, 5, 1` | EXR beauty frame |
-| `5, 34, 5, 1` | PNG and EXR beauty frames |
-| `5, 32, 5, 2` | larger EXR output |
-| `5, 32, 5, 4` | very large EXR output; about 1 GB in one test scene |
-| `6, 32, 5, 1` | multiple layered EXRs, including `None`, `Depth`, `MaskSSAO`, `PureReflectionView`, and `SurfaceEmissive` |
+| `NORMAL, SF_PNG, _1280x720, X1` | PNG beauty frame |
+| `NORMAL_MULTISAMPLE, SF_PNG, _1280x720, X1` | PNG with high-res naming suffix |
+| `HIGH_RESOLUTION, SF_PNG, _1280x720, X1` | PNG with high-res naming suffix |
+| `HIGH_RESOLUTION, SF_EXR, _1280x720, X1` | EXR beauty frame |
+| `HIGH_RESOLUTION, SF_PNG_AND_EXR, _1280x720, X1` | PNG and EXR beauty frames |
+| `HIGH_RESOLUTION, SF_EXR, _1280x720, X2` | larger EXR output |
+| `HIGH_RESOLUTION, SF_EXR, _1280x720, X4` | very large EXR output; about 1 GB in one test scene |
+| `HIGH_RESOLUTION_LAYERED, SF_EXR, _1280x720, X1` | multiple layered EXRs, including `None`, `Depth`, `MaskSSAO`, `PureReflectionView`, and `SurfaceEmissive` |
 
 Resolution presets and multipliers are passed through to the engine, but the
 final image size can still follow engine/viewport behavior. In one test scene,
@@ -181,7 +212,7 @@ Audio.Stop();
 
 Audio paths are relative to the same RedFrame screenshot folder.
 
-Current audio output is 48 kHz stereo IEEE float PCM.
+Current audio output is 48 kHz stereo IEEE float PCM. 
 
 ## Debug Frame Dump
 

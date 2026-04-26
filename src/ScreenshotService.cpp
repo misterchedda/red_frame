@@ -114,6 +114,11 @@ std::vector<std::filesystem::path> FindScreenshotOutputsForRequest(const Screens
             continue;
         }
 
+        if (!IsLikelyScreenshotOutputForRequest(aRequest, closedPath))
+        {
+            continue;
+        }
+
         if (!std::filesystem::exists(closedPath, ec))
         {
             ec.clear();
@@ -326,6 +331,141 @@ void UpdateScreenshotRequestStatus(ScreenshotRequest& aRequest)
                 aRequest.outputPaths.size(),
                 aRequest.outputPaths.empty() ? "" : aRequest.outputPaths.front().string().c_str());
     }
+}
+
+bool IsScreenshotRequestTerminal(const ScreenshotRequest& aRequest)
+{
+    return aRequest.status == kScreenshotRequestComplete ||
+           aRequest.status == kScreenshotRequestFailed ||
+           aRequest.status == kScreenshotRequestTimeout;
+}
+
+bool DispatchScreenshotListener(const ScreenshotListener& aListener, const ScreenshotRequest& aRequest)
+{
+    auto target = aListener.target.Lock();
+    if (!target)
+    {
+        return false;
+    }
+
+    auto* type = target->GetType();
+    auto* function = type ? type->GetFunction(aListener.functionName) : nullptr;
+    if (!function)
+    {
+        LogWarn("Screenshot listener %d skipped: function '%s' was not found.",
+                aListener.id,
+                aListener.functionName.ToString());
+        return true;
+    }
+
+    auto requestId = aRequest.id;
+    auto status = aRequest.status;
+    auto error = aRequest.error;
+    RED4ext::StackArgs_t args;
+    args.emplace_back(nullptr, &requestId);
+    args.emplace_back(nullptr, &status);
+    args.emplace_back(nullptr, &error);
+
+    const auto success = RED4ext::ExecuteFunction(target.instance, function, nullptr, args);
+    if (!success)
+    {
+        LogWarn("Screenshot listener %d callback '%s' failed for request %d.",
+                aListener.id,
+                aListener.functionName.ToString(),
+                aRequest.id);
+    }
+
+    return true;
+}
+
+void DispatchScreenshotRequestListeners(ScreenshotRequest& aRequest)
+{
+    if (aRequest.listenerDispatched || !IsScreenshotRequestTerminal(aRequest))
+    {
+        return;
+    }
+
+    aRequest.listenerDispatched = true;
+    if (g_screenshotListeners.empty())
+    {
+        return;
+    }
+
+    auto listeners = g_screenshotListeners;
+    for (const auto& listener : listeners)
+    {
+        DispatchScreenshotListener(listener, aRequest);
+    }
+
+    std::erase_if(g_screenshotListeners, [](const ScreenshotListener& aListener) {
+        return aListener.target.Expired();
+    });
+}
+
+void PumpScreenshotRequests()
+{
+    for (auto& request : g_screenshotRequests)
+    {
+        UpdateScreenshotRequestStatus(request);
+        DispatchScreenshotRequestListeners(request);
+    }
+}
+
+std::int32_t RegisterScreenshotListener(const RED4ext::Handle<RED4ext::IScriptable>& aTarget,
+                                        const RED4ext::CName aFunctionName)
+{
+    if (!aTarget || aFunctionName.IsNone())
+    {
+        return 0;
+    }
+
+    auto* type = aTarget->GetType();
+    if (!type || !type->GetFunction(aFunctionName))
+    {
+        LogWarn("Screenshot listener rejected: function '%s' was not found.",
+                aFunctionName.ToString());
+        return 0;
+    }
+
+    for (const auto& listener : g_screenshotListeners)
+    {
+        if (listener.target.instance == aTarget.instance &&
+            listener.functionName == aFunctionName)
+        {
+            return listener.id;
+        }
+    }
+
+    ScreenshotListener listener{};
+    listener.id = ++g_screenshotListenerIndex;
+    listener.target = RED4ext::WeakHandle<RED4ext::IScriptable>(aTarget);
+    listener.functionName = aFunctionName;
+    g_screenshotListeners.push_back(std::move(listener));
+
+    LogInfo("Registered screenshot listener %d -> %s",
+            g_screenshotListenerIndex,
+            aFunctionName.ToString());
+    return g_screenshotListenerIndex;
+}
+
+bool UnregisterScreenshotListener(const std::int32_t aListenerId)
+{
+    if (aListenerId <= 0)
+    {
+        return false;
+    }
+
+    const auto oldSize = g_screenshotListeners.size();
+    std::erase_if(g_screenshotListeners, [aListenerId](const ScreenshotListener& aListener) {
+        return aListener.id == aListenerId;
+    });
+
+    return g_screenshotListeners.size() != oldSize;
+}
+
+void ClearScreenshotListeners()
+{
+    g_screenshotListeners.clear();
 }
 
 std::int32_t QueueScreenshot(const std::filesystem::path& aOutputPath,

@@ -120,5 +120,19 @@ void RegisterHarnessScriptApi(RED4ext::CRTTISystem* aRtti, RED4ext::CBaseFunctio
         rtti->RegisterFunction(func);
     }
 
+    {
+        auto* func = RED4ext::CGlobalFunction::Create("RedFrameHarnessReportScreenshotListener",
+                                                      "RedFrameHarnessReportScreenshotListener",
+                                                      &RedFrameHarnessReportScreenshotListener);
+        func->flags = flags;
+        func->AddParam("Int32", "listenerId");
+        func->AddParam("Int32", "requestId");
+        func->AddParam("Int32", "status");
+        func->AddParam("Int32", "error");
+        func->AddParam("String", "primaryPath");
+        func->AddParam("Int32", "pathCount");
+        rtti->RegisterFunction(func);
+    }
+
 }
 } // namespace RedFrame

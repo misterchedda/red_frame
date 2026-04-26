@@ -12,6 +12,7 @@
 #include <RED4ext/Scripting/Natives/Generated/rend/ScreenshotMode.hpp>
 #include <RED4ext/Scripting/Natives/Generated/rend/SingleScreenShotData.hpp>
 #include <RED4ext/Scripting/Natives/Generated/rend/dim/EPreset.hpp>
+#include <RED4ext/Scripting/Utils.hpp>
 
 #include <algorithm>
 #include <array>
@@ -47,6 +48,7 @@ inline constexpr std::uintptr_t kPhotoModeSimpleStartCaptureRva = 0x29A5220;
 inline constexpr std::uintptr_t kPhotoModeCaptureObjectOffset = 0x320;
 inline constexpr std::uintptr_t kAkRegisterCaptureCallbackRva = 0x1ACB970;
 inline constexpr std::uintptr_t kAkUnregisterCaptureCallbackRva = 0x1AD1830;
+inline constexpr std::uintptr_t kAkGetSampleRateRva = 0x1AC6D20;
 inline constexpr std::uintptr_t kRendererManagerPtrRva = 0x3427C00;
 inline constexpr std::uintptr_t kScreenshotCommandQueueSubmitRva = 0x1D51300;
 inline constexpr std::uintptr_t kScreenshotCommandExecuteRva = 0x1D53070;
@@ -87,6 +89,7 @@ using PhotoModeSimpleStartCapture_t = void (*)(void*, void*, bool);
 using AkCaptureCallback_t = void (*)(void* aAudioBuffer, std::uint64_t aOutputDeviceId, void* aCookie);
 using AkRegisterCaptureCallback_t = std::int32_t (*)(AkCaptureCallback_t aCallback, std::uint64_t aOutputDeviceId, void* aCookie);
 using AkUnregisterCaptureCallback_t = std::int32_t (*)(AkCaptureCallback_t aCallback, std::uint64_t aOutputDeviceId, void* aCookie);
+using AkGetSampleRate_t = std::uint32_t (*)();
 
 struct AutoRunConfig
 {
@@ -219,6 +222,7 @@ struct ScreenshotRequest
     std::int32_t status = kScreenshotRequestQueued;
     std::int32_t error = kCaptureErrorNone;
     std::int32_t expectedOutputCount = 1;
+    bool listenerDispatched = false;
     std::filesystem::path outputPath;
     std::vector<std::filesystem::path> outputPaths;
     Clock::time_point queuedAt{};
@@ -228,6 +232,13 @@ struct ScreenshotRequest
     std::uintmax_t observedTotalSize = 0;
     std::filesystem::file_time_type observedLatestWriteTime{};
     std::unique_ptr<NativeSingleScreenShotData> data;
+};
+
+struct ScreenshotListener
+{
+    std::int32_t id = 0;
+    RED4ext::WeakHandle<RED4ext::IScriptable> target;
+    RED4ext::CName functionName;
 };
 
 struct AkChannelConfigProbe
@@ -296,6 +307,8 @@ extern std::int32_t g_screenshotLastError;
 extern std::int32_t g_audioLastError;
 extern std::vector<std::unique_ptr<NativeSingleScreenShotData>> g_probeScreenshotRequests;
 extern std::vector<ScreenshotRequest> g_screenshotRequests;
+extern std::int32_t g_screenshotListenerIndex;
+extern std::vector<ScreenshotListener> g_screenshotListeners;
 extern std::mutex g_screenshotClosedOutputsMutex;
 extern std::vector<std::filesystem::path> g_screenshotClosedOutputs;
 extern AkRegisterCaptureCallback_t g_akRegisterCaptureCallbackOriginal;
@@ -361,6 +374,7 @@ void LogError(const char* aFormat, Args... aArgs)
 bool IsAudioSidecarCaptureActive();
 AkRegisterCaptureCallback_t GetAkRegisterCaptureCallback();
 AkUnregisterCaptureCallback_t GetAkUnregisterCaptureCallback();
+AkGetSampleRate_t GetAkGetSampleRate();
 std::int32_t AkRegisterCaptureCallbackHook(AkCaptureCallback_t aCallback, std::uint64_t aOutputDeviceId, void* aCookie);
 std::int32_t AkUnregisterCaptureCallbackHook(AkCaptureCallback_t aCallback, std::uint64_t aOutputDeviceId, void* aCookie);
 void AttachAudioCaptureCallbackProbe();
@@ -444,6 +458,10 @@ CaptureOutputDirectory MakeCaptureOutputDirectory();
 std::filesystem::path MakeProbeScreenshotPath();
 ScreenshotRequest* FindScreenshotRequest(std::int32_t aRequestId);
 void UpdateScreenshotRequestStatus(ScreenshotRequest& aRequest);
+void PumpScreenshotRequests();
+std::int32_t RegisterScreenshotListener(const RED4ext::Handle<RED4ext::IScriptable>& aTarget, RED4ext::CName aFunctionName);
+bool UnregisterScreenshotListener(std::int32_t aListenerId);
+void ClearScreenshotListeners();
 std::int32_t QueueScreenshot(const std::filesystem::path& aOutputPath, std::int32_t aMode, std::int32_t aSaveFormat, std::int32_t aResolution, std::int32_t aResolutionMultiplier, bool aForceLOD0);
 bool QueueDefaultRootScreenshot(bool aVideoRoot);
 bool QueueProbeScreenshot();
@@ -471,6 +489,9 @@ void RedFrameScreenshotGetRequestError(RED4ext::IScriptable*, RED4ext::CStackFra
 void RedFrameScreenshotGetRequestPath(RED4ext::IScriptable*, RED4ext::CStackFrame*, RED4ext::CString*, int64_t);
 void RedFrameScreenshotGetRequestPathCount(RED4ext::IScriptable*, RED4ext::CStackFrame*, std::int32_t*, int64_t);
 void RedFrameScreenshotGetRequestPathAt(RED4ext::IScriptable*, RED4ext::CStackFrame*, RED4ext::CString*, int64_t);
+void RedFrameScreenshotRegisterListener(RED4ext::IScriptable*, RED4ext::CStackFrame*, std::int32_t*, int64_t);
+void RedFrameScreenshotUnregisterListener(RED4ext::IScriptable*, RED4ext::CStackFrame*, bool*, int64_t);
+void RedFrameScreenshotPump(RED4ext::IScriptable*, RED4ext::CStackFrame*, void*, int64_t);
 void RedFrameAudioIsActive(RED4ext::IScriptable*, RED4ext::CStackFrame*, bool*, int64_t);
 void RedFrameAudioGetLastError(RED4ext::IScriptable*, RED4ext::CStackFrame*, std::int32_t*, int64_t);
 void RedFrameAutoRunCaptureDiagnosticScreenshot(RED4ext::IScriptable*, RED4ext::CStackFrame*, bool*, int64_t);
@@ -478,6 +499,7 @@ void RedFrameAutoApplyCaptureSequentialFrames(RED4ext::IScriptable*, RED4ext::CS
 void RedFrameAutoRunPhotoModeCapture(RED4ext::IScriptable*, RED4ext::CStackFrame*, bool*, int64_t);
 void RedFrameAutoRunEngineFrameCapture(RED4ext::IScriptable*, RED4ext::CStackFrame*, bool*, int64_t);
 void RedFrameAutoRunScreenshotMatrix(RED4ext::IScriptable*, RED4ext::CStackFrame*, bool*, int64_t);
+void RedFrameHarnessReportScreenshotListener(RED4ext::IScriptable*, RED4ext::CStackFrame*, void*, int64_t);
 void RedFrameIsAutoRunEnabled(RED4ext::IScriptable*, RED4ext::CStackFrame*, bool*, int64_t);
 void RedFrameGetAutoRunStartDelaySeconds(RED4ext::IScriptable*, RED4ext::CStackFrame*, float*, int64_t);
 void RedFrameGetAutoRunDurationSeconds(RED4ext::IScriptable*, RED4ext::CStackFrame*, float*, int64_t);

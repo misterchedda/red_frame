@@ -14,6 +14,12 @@ AkUnregisterCaptureCallback_t GetAkUnregisterCaptureCallback()
     return callback;
 }
 
+AkGetSampleRate_t GetAkGetSampleRate()
+{
+    static RED4ext::RelocFunc<AkGetSampleRate_t> getSampleRate(kAkGetSampleRateRva);
+    return getSampleRate;
+}
+
 std::int32_t AkRegisterCaptureCallbackHook(AkCaptureCallback_t aCallback,
                                            const std::uint64_t aOutputDeviceId,
                                            void* aCookie)
@@ -283,10 +289,21 @@ bool StartAudioSidecarCapture(const std::filesystem::path& aOutputPath, const bo
 {
     auto registerCallback = g_akRegisterCaptureCallbackOriginal ? g_akRegisterCaptureCallbackOriginal
                                                                 : GetAkRegisterCaptureCallback();
+    auto getSampleRate = GetAkGetSampleRate();
     if (!registerCallback)
     {
         LogWarn("Audio self-register probe skipped: AK::SoundEngine::RegisterCaptureCallback unavailable.");
         return false;
+    }
+
+    auto sampleRate = kAudioCaptureSampleRate;
+    if (getSampleRate)
+    {
+        const auto engineSampleRate = getSampleRate();
+        if (engineSampleRate != 0)
+        {
+            sampleRate = engineSampleRate;
+        }
     }
 
     {
@@ -300,7 +317,7 @@ bool StartAudioSidecarCapture(const std::filesystem::path& aOutputPath, const bo
         g_audioSidecarCaptureState.writeSidecar = aWriteSidecar;
         g_audioSidecarCaptureState.outputPath = aOutputPath;
         g_audioSidecarCaptureState.channels = 0;
-        g_audioSidecarCaptureState.sampleRate = kAudioCaptureSampleRate;
+        g_audioSidecarCaptureState.sampleRate = sampleRate;
         g_audioSidecarCaptureState.callbacks = 0;
         g_audioSidecarCaptureState.frames = 0;
         g_audioSidecarCaptureState.skippedBuffers = 0;
@@ -308,7 +325,7 @@ bool StartAudioSidecarCapture(const std::filesystem::path& aOutputPath, const bo
         g_audioSidecarCaptureState.samples.clear();
         if (aWriteSidecar)
         {
-            g_audioSidecarCaptureState.samples.reserve(kAudioCaptureSampleRate * 2 * 10);
+            g_audioSidecarCaptureState.samples.reserve(static_cast<std::size_t>(sampleRate) * 2 * 10);
         }
     }
 
@@ -330,10 +347,11 @@ bool StartAudioSidecarCapture(const std::filesystem::path& aOutputPath, const bo
     }
 
     g_audioSelfRegisterProbeActive.store(success);
-    LogWarn("Audio capture callback start: result=%d active=%s writeSidecar=%s callback=%p outputDeviceId=%llu cookie=%p outputPath=%s",
+    LogWarn("Audio capture callback start: result=%d active=%s writeSidecar=%s sampleRate=%u callback=%p outputDeviceId=%llu cookie=%p outputPath=%s",
             result,
             success ? "true" : "false",
             aWriteSidecar ? "true" : "false",
+            sampleRate,
             reinterpret_cast<void*>(&RedFrameAudioCaptureCallback),
             static_cast<unsigned long long>(kAudioCaptureDefaultOutputDeviceId),
             g_audioSelfRegisterProbeCookie,

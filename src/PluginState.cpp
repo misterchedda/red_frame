@@ -23,6 +23,8 @@ std::int32_t g_screenshotLastError = kCaptureErrorNone;
 std::int32_t g_audioLastError = kCaptureErrorNone;
 std::vector<std::unique_ptr<NativeSingleScreenShotData>> g_probeScreenshotRequests;
 std::vector<ScreenshotRequest> g_screenshotRequests;
+std::int32_t g_screenshotListenerIndex = 0;
+std::vector<ScreenshotListener> g_screenshotListeners;
 std::mutex g_screenshotClosedOutputsMutex;
 std::vector<std::filesystem::path> g_screenshotClosedOutputs;
 AkRegisterCaptureCallback_t g_akRegisterCaptureCallbackOriginal = nullptr;

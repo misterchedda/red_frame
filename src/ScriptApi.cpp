@@ -44,10 +44,10 @@ void PostRegisterTypes()
         auto* func = CreateStaticMethod(g_screenshotApiClass, "Take", &RedFrameCaptureScreenshot);
         func->SetReturnType("Int32");
         func->AddParam("String", "outputPath");
-        func->AddParam("Int32", "mode");
-        func->AddParam("Int32", "saveFormat");
-        func->AddParam("Int32", "resolution");
-        func->AddParam("Int32", "resolutionMultiplier");
+        func->AddParam("rendScreenshotMode", "mode");
+        func->AddParam("ESaveFormat", "saveFormat");
+        func->AddParam("renddimEPreset", "resolution");
+        func->AddParam("rendResolutionMultiplier", "resolutionMultiplier");
         func->AddParam("Bool", "forceLOD0");
         g_screenshotApiClass.RegisterFunction(func);
     }
@@ -92,6 +92,29 @@ void PostRegisterTypes()
         func->AddParam("Int32", "requestId");
         func->AddParam("Int32", "index");
         g_screenshotApiClass.RegisterFunction(func);
+    }
+
+    {
+        auto* func = CreateStaticMethod(g_screenshotApiClass, "RegisterListener", &RedFrameScreenshotRegisterListener);
+        func->SetReturnType("Int32");
+        func->AddParam("IScriptable", "target");
+        func->AddParam("CName", "functionName");
+        g_screenshotApiClass.RegisterFunction(func);
+    }
+
+    {
+        auto* func = CreateStaticMethod(g_screenshotApiClass, "UnregisterListener", &RedFrameScreenshotUnregisterListener);
+        func->SetReturnType("Bool");
+        func->AddParam("Int32", "listenerId");
+        g_screenshotApiClass.RegisterFunction(func);
+    }
+
+    {
+        auto* func = RED4ext::CGlobalFunction::Create("RedFrame.RedFrameScreenshotPump",
+                                                      "RedFrame.RedFrameScreenshotPump",
+                                                      &RedFrameScreenshotPump);
+        func->flags = flags;
+        rtti->RegisterFunction(func);
     }
 
     {

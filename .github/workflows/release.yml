@@ -25,7 +25,9 @@ jobs:
 
       - name: Checkout RED4ext.SDK
         shell: pwsh
-        run: git clone --depth 1 https://github.com/WopsS/RED4ext.SDK.git ../RED4ext.SDK
+        run: |
+          git clone https://github.com/WopsS/RED4ext.SDK.git ../RED4ext.SDK
+          git -C ../RED4ext.SDK checkout 0d1738eabfbaf5913d1395920abc3f7115685447
 
       - name: Configure
         shell: pwsh

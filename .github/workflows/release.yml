@@ -1,0 +1,70 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Release version without the leading v. Defaults to CMake project version."
+        required: false
+        type: string
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    name: Build and package
+    runs-on: windows-2022
+
+    steps:
+      - name: Checkout RedFrame
+        uses: actions/checkout@v4
+
+      - name: Checkout RED4ext.SDK
+        shell: pwsh
+        run: git clone --depth 1 https://github.com/WopsS/RED4ext.SDK.git ../RED4ext.SDK
+
+      - name: Configure
+        shell: pwsh
+        run: cmake -S . -B build-vs -G "Visual Studio 17 2022" -A x64
+
+      - name: Build
+        shell: pwsh
+        run: cmake --build build-vs --config RelWithDebInfo --target RedFrame
+
+      - name: Package
+        shell: pwsh
+        run: |
+          $version = "${{ github.event.inputs.version }}"
+          if ([string]::IsNullOrWhiteSpace($version) -and "${{ github.ref_type }}" -eq "tag") {
+            $version = "${{ github.ref_name }}".TrimStart("v")
+          }
+
+          $args = @{
+            Configuration = "RelWithDebInfo"
+            BuildDir = "build-vs"
+            IncludeSymbols = $true
+          }
+          if (-not [string]::IsNullOrWhiteSpace($version)) {
+            $args.Version = $version
+          }
+
+          .\packaging\PackageRelease.ps1 @args
+
+      - name: Upload package artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: RedFrame-release
+          path: |
+            dist/RedFrame-*.zip
+
+      - name: Publish GitHub release
+        if: github.ref_type == 'tag'
+        uses: softprops/action-gh-release@v2
+        with:
+          draft: true
+          files: |
+            dist/RedFrame-*.zip

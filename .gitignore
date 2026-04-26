@@ -1,0 +1,28 @@
+# Build outputs
+build*/
+out/
+dist/
+*.user
+*.suo
+*.vcxproj*
+*.sln
+*.pdb
+*.ilk
+*.exp
+*.lib
+
+# Local runtime output
+RedFrameHarness/
+*.log
+
+# Local-only research and harness material
+INTERNAL.md
+docs/
+tools/
+
+# Generated/editor noise
+.vs/
+.idea/
+.vscode/
+*.tmp
+*.bak

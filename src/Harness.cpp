@@ -105,6 +105,32 @@ void RedFrameAutoRunEngineFrameCapture(RED4ext::IScriptable* aContext,
     }
 }
 
+void RedFrameAutoRunScreenshotMatrix(RED4ext::IScriptable* aContext,
+                                     RED4ext::CStackFrame* aFrame,
+                                     bool* aOut,
+                                     int64_t a4)
+{
+    RED4EXT_UNUSED_PARAMETER(aContext);
+    RED4EXT_UNUSED_PARAMETER(a4);
+    aFrame->code++;
+
+    bool success = true;
+    if (g_autoRunConfig.screenshotMatrix)
+    {
+        if (g_autoRunConfig.probeScreenshotOutputSubmit)
+        {
+            AttachScreenshotOutputSubmitProbe();
+        }
+
+        success = QueueScreenshotMatrix();
+    }
+
+    if (aOut)
+    {
+        *aOut = success;
+    }
+}
+
 void RedFrameIsAutoRunEnabled(RED4ext::IScriptable* aContext, RED4ext::CStackFrame* aFrame, bool* aOut, int64_t a4)
 {
     RED4EXT_UNUSED_PARAMETER(aContext);
@@ -240,6 +266,11 @@ void StartNativeAutoRun()
     if (g_autoRunConfig.engineFrameCapture)
     {
         InvokeEngineDefaultFrameCapture();
+    }
+
+    if (g_autoRunConfig.probeScreenshotOutputSubmit)
+    {
+        AttachScreenshotOutputSubmitProbe();
     }
 
     if (g_autoRunConfig.screenshotMatrix)

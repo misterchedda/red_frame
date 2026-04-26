@@ -101,6 +101,17 @@ AutoRunConfig LoadAutoRunConfigFromEnvironment()
             ParseEnvironmentBool(*probeAudioSelfRegister, config.probeAudioSelfRegister);
     }
 
+    if (const auto probeScreenshotOutputSubmit = ReadEnvironmentVariable("REDFRAME_PROBE_SCREENSHOT_OUTPUT_SUBMIT"))
+    {
+        config.probeScreenshotOutputSubmit =
+            ParseEnvironmentBool(*probeScreenshotOutputSubmit, config.probeScreenshotOutputSubmit);
+    }
+
+    if (const auto screenshotMatrixCase = ReadEnvironmentVariable("REDFRAME_SCREENSHOT_MATRIX_CASE"))
+    {
+        config.screenshotMatrixCase = ParseEnvironmentInt32(*screenshotMatrixCase, config.screenshotMatrixCase);
+    }
+
     if (const auto probeScreenshotTailMode = ReadEnvironmentVariable("REDFRAME_PROBE_SCREENSHOT_TAIL_MODE"))
     {
         config.probeScreenshotTailMode =

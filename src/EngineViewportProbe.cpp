@@ -44,6 +44,46 @@ PhotoModeSimpleStartCapture_t GetPhotoModeSimpleStartCapture()
     return startCapture;
 }
 
+void* GetRendererManager()
+{
+    static RED4ext::RelocPtr<void*> manager(kRendererManagerPtrRva);
+    return manager;
+}
+
+void* GetRendererOutputObject()
+{
+    auto* manager = GetRendererManager();
+    if (!IsLikelyProcessPointer(manager))
+    {
+        return nullptr;
+    }
+
+    std::uintptr_t vftable = 0;
+    std::uintptr_t accessor = 0;
+    if (!TryReadPointer(manager, 0x0, vftable) ||
+        !TryReadPointer(reinterpret_cast<void*>(vftable), 0x450, accessor) ||
+        !IsLikelyProcessPointer(reinterpret_cast<void*>(accessor)))
+    {
+        return nullptr;
+    }
+
+    using GetRendererOutputObject_t = void* (*)(void*);
+    auto* getOutputObject = reinterpret_cast<GetRendererOutputObject_t>(accessor);
+
+#if defined(_MSC_VER)
+    __try
+    {
+        return getOutputObject(manager);
+    }
+    __except (EXCEPTION_EXECUTE_HANDLER)
+    {
+        return nullptr;
+    }
+#else
+    return getOutputObject(manager);
+#endif
+}
+
 bool TryReadPointer(const void* aBase, const std::size_t aOffset, std::uintptr_t& aOut);
 
 void* GetPhotoModeSystem()

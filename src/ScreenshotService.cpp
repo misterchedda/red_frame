@@ -23,6 +23,26 @@ ScreenshotRequest* FindScreenshotRequest(const std::int32_t aRequestId)
     return nullptr;
 }
 
+std::int32_t InferExpectedScreenshotOutputCount(const NativeSingleScreenShotData& aData)
+{
+    const auto mode = static_cast<std::int32_t>(aData.mode);
+    const auto saveFormat = static_cast<std::int32_t>(aData.saveFormat);
+    const auto highResFormatMultiplier = saveFormat == 34 ? 2 : 1;
+    if (mode == 6)
+    {
+        // HIGH_RESOLUTION_LAYERED seeds five EMM layers in the native setup path.
+        return 5 * highResFormatMultiplier;
+    }
+
+    if (mode == 5)
+    {
+        return std::max<std::int32_t>(1, static_cast<std::int32_t>(aData.emmModes.Size())) *
+               highResFormatMultiplier;
+    }
+
+    return 1;
+}
+
 bool IsLikelyScreenshotOutputForRequest(const ScreenshotRequest& aRequest, const std::filesystem::path& aCandidatePath)
 {
     const auto requestedName = aRequest.outputPath.filename().string();
@@ -56,13 +76,65 @@ bool IsLikelyScreenshotOutputForRequest(const ScreenshotRequest& aRequest, const
     return false;
 }
 
+bool HasClosedOutputsForRequest(const ScreenshotRequest& aRequest)
+{
+    std::vector<std::filesystem::path> closedOutputPaths;
+    {
+        std::lock_guard lock(g_screenshotClosedOutputsMutex);
+        closedOutputPaths = g_screenshotClosedOutputs;
+    }
+
+    for (const auto& closedPath : closedOutputPaths)
+    {
+        if (IsLikelyScreenshotOutputForRequest(aRequest, closedPath))
+        {
+            return true;
+        }
+    }
+
+    return false;
+}
+
 std::vector<std::filesystem::path> FindScreenshotOutputsForRequest(const ScreenshotRequest& aRequest)
 {
     std::vector<std::filesystem::path> paths;
     std::error_code ec;
-    const auto parentPath = aRequest.outputPath.parent_path();
     const auto minWriteTime = aRequest.queuedFileTime - std::chrono::seconds(1);
 
+    std::vector<std::filesystem::path> closedOutputPaths;
+    {
+        std::lock_guard lock(g_screenshotClosedOutputsMutex);
+        closedOutputPaths = g_screenshotClosedOutputs;
+    }
+
+    for (const auto& closedPath : closedOutputPaths)
+    {
+        if (closedPath.empty() || std::find(paths.begin(), paths.end(), closedPath) != paths.end())
+        {
+            continue;
+        }
+
+        if (!std::filesystem::exists(closedPath, ec))
+        {
+            ec.clear();
+            continue;
+        }
+
+        const auto writeTime = std::filesystem::last_write_time(closedPath, ec);
+        if (!ec && writeTime >= minWriteTime)
+        {
+            paths.push_back(closedPath);
+        }
+        ec.clear();
+    }
+
+    if (!paths.empty())
+    {
+        std::sort(paths.begin(), paths.end());
+        return paths;
+    }
+
+    const auto parentPath = aRequest.outputPath.parent_path();
     if (std::filesystem::exists(aRequest.outputPath, ec))
     {
         const auto writeTime = std::filesystem::last_write_time(aRequest.outputPath, ec);
@@ -117,6 +189,23 @@ std::vector<std::filesystem::path> FindScreenshotOutputsForRequest(const Screens
     return paths;
 }
 
+void RecordClosedScreenshotOutput(const std::filesystem::path& aOutputPath)
+{
+    if (aOutputPath.empty())
+    {
+        return;
+    }
+
+    std::lock_guard lock(g_screenshotClosedOutputsMutex);
+    if (std::find(g_screenshotClosedOutputs.begin(), g_screenshotClosedOutputs.end(), aOutputPath) ==
+        g_screenshotClosedOutputs.end())
+    {
+        g_screenshotClosedOutputs.push_back(aOutputPath);
+        LogInfo("Observed closed screenshot output path: %s",
+                aOutputPath.string().c_str());
+    }
+}
+
 void UpdateScreenshotRequestStatus(ScreenshotRequest& aRequest)
 {
     if (aRequest.status == kScreenshotRequestFailed ||
@@ -128,6 +217,7 @@ void UpdateScreenshotRequestStatus(ScreenshotRequest& aRequest)
     const auto now = Clock::now();
     std::error_code ec;
     auto outputPaths = FindScreenshotOutputsForRequest(aRequest);
+    const auto hasClosedOutputs = HasClosedOutputsForRequest(aRequest);
     if (aRequest.status == kScreenshotRequestComplete)
     {
         if (!outputPaths.empty() && outputPaths != aRequest.outputPaths)
@@ -193,6 +283,23 @@ void UpdateScreenshotRequestStatus(ScreenshotRequest& aRequest)
         latestWriteTime = std::max(latestWriteTime, writeTime);
     }
 
+    if (hasClosedOutputs &&
+        static_cast<std::int32_t>(aRequest.outputPaths.size()) >= aRequest.expectedOutputCount)
+    {
+        aRequest.status = kScreenshotRequestComplete;
+        aRequest.error = kCaptureErrorNone;
+        aRequest.observedTotalSize = totalSize;
+        aRequest.observedLatestWriteTime = latestWriteTime;
+        aRequest.lastObservedAt = now;
+        aRequest.completedAt = now;
+        LogInfo("Screenshot request %d completed from closed output file(s): %zu/%d, primary=%s",
+                aRequest.id,
+                aRequest.outputPaths.size(),
+                aRequest.expectedOutputCount,
+                aRequest.outputPaths.empty() ? "" : aRequest.outputPaths.front().string().c_str());
+        return;
+    }
+
     if (aRequest.status != kScreenshotRequestWriting ||
         aRequest.observedTotalSize != totalSize ||
         aRequest.observedLatestWriteTime != latestWriteTime)
@@ -206,6 +313,11 @@ void UpdateScreenshotRequestStatus(ScreenshotRequest& aRequest)
 
     if (now - aRequest.lastObservedAt >= std::chrono::milliseconds(kScreenshotRequestStableMilliseconds))
     {
+        if (static_cast<std::int32_t>(aRequest.outputPaths.size()) < aRequest.expectedOutputCount)
+        {
+            return;
+        }
+
         aRequest.status = kScreenshotRequestComplete;
         aRequest.error = kCaptureErrorNone;
         aRequest.completedAt = now;
@@ -223,6 +335,13 @@ std::int32_t QueueScreenshot(const std::filesystem::path& aOutputPath,
                              const std::int32_t aResolutionMultiplier,
                              const bool aForceLOD0)
 {
+    if (g_autoRunConfig.probeScreenshotOutputSubmit)
+    {
+        AttachScreenshotOutputSubmitProbe();
+    }
+
+    AttachScreenshotFileProbe();
+
     auto* engine = RED4ext::CGameEngine::Get();
     if (!engine)
     {
@@ -265,10 +384,10 @@ std::int32_t QueueScreenshot(const std::filesystem::path& aOutputPath,
     data->emmModes = RED4ext::DynArray<RED4ext::EEnvManagerModifier>(RED4ext::Memory::ScriptAllocator::Get());
     data->emmModes.PushBack(RED4ext::EEnvManagerModifier::EMM_None);
 
-    engine->TakeScreenshot(*data, false);
-
+    request.expectedOutputCount = InferExpectedScreenshotOutputCount(*data);
     request.data = std::move(data);
     g_screenshotRequests.push_back(std::move(request));
+    engine->TakeScreenshot(*g_screenshotRequests.back().data, false);
 
     LogInfo("Queued TakeScreenshot request %d -> %s",
             g_screenshotRequestIndex,
@@ -412,16 +531,39 @@ bool QueueScreenshotMatrix()
         {"hires_exr_ultrawide_m5_f32_r11_x1", ".exr", 5, 32, 11, 1},
         {"hires_exr_wide_m5_f32_r12_x1", ".exr", 5, 32, 12, 1},
         {"hires_layered_exr_m6_f32_r5_x1", ".exr", 6, 32, 5, 1},
+        {"normal_exr_m1_f32_r5_x1", ".exr", 1, 32, 5, 1},
+        {"normal_png_and_exr_m1_f34_r5_x1", ".exr", 1, 34, 5, 1},
+        {"hires_layered_png_m6_f2_r5_x1", ".png", 6, 2, 5, 1},
+        {"hires_layered_png_and_exr_m6_f34_r5_x1", ".exr", 6, 34, 5, 1},
     };
 
-    const auto runIndex = ++g_screenshotIndex;
     char runName[64]{};
-    sprintf_s(runName, "screenshot_matrix_%04d", runIndex);
+    const auto nowTime = std::time(nullptr);
+    std::tm localTime{};
+    localtime_s(&localTime, &nowTime);
+    sprintf_s(runName,
+              "screenshot_matrix_%04d%02d%02d_%02d%02d%02d_%04d",
+              localTime.tm_year + 1900,
+              localTime.tm_mon + 1,
+              localTime.tm_mday,
+              localTime.tm_hour,
+              localTime.tm_min,
+              localTime.tm_sec,
+              ++g_screenshotIndex);
     const auto outputDirectory = GetRedFrameOutputDirectory() / "Harness" / runName;
 
     std::int32_t queuedCount = 0;
-    for (const auto& testCase : cases)
+    std::int32_t targetCount = 0;
+    for (std::size_t caseIndex = 0; caseIndex < std::size(cases); ++caseIndex)
     {
+        if (g_autoRunConfig.screenshotMatrixCase >= 0 &&
+            static_cast<std::size_t>(g_autoRunConfig.screenshotMatrixCase) != caseIndex)
+        {
+            continue;
+        }
+
+        ++targetCount;
+        const auto& testCase = cases[caseIndex];
         const auto outputPath = outputDirectory / (std::string(testCase.name) + testCase.extension);
         const auto requestId = QueueScreenshot(outputPath,
                                                testCase.mode,
@@ -432,8 +574,9 @@ bool QueueScreenshotMatrix()
         if (requestId > 0)
         {
             ++queuedCount;
-            LogInfo("Screenshot matrix queued: run=%s request=%d name=%s mode=%d saveFormat=%d resolution=%d multiplier=%d requested=%s",
+            LogInfo("Screenshot matrix queued: run=%s case=%zu request=%d name=%s mode=%d saveFormat=%d resolution=%d multiplier=%d requested=%s",
                     runName,
+                    caseIndex,
                     requestId,
                     testCase.name,
                     testCase.mode,
@@ -444,18 +587,19 @@ bool QueueScreenshotMatrix()
         }
         else
         {
-            LogWarn("Screenshot matrix failed to queue: run=%s name=%s requested=%s",
+            LogWarn("Screenshot matrix failed to queue: run=%s case=%zu name=%s requested=%s",
                     runName,
+                    caseIndex,
                     testCase.name,
                     outputPath.string().c_str());
         }
     }
 
-    LogWarn("Screenshot matrix queued %d/%zu cases into %s",
+    LogWarn("Screenshot matrix queued %d/%d cases into %s",
             queuedCount,
-            std::size(cases),
+            targetCount,
             outputDirectory.string().c_str());
-    return queuedCount == std::size(cases);
+    return targetCount > 0 && queuedCount == targetCount;
 }
 
 } // namespace RedFrame

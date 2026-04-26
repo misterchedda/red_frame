@@ -29,7 +29,7 @@ RED4EXT_C_EXPORT bool RED4EXT_CALL Main(RED4ext::v1::PluginHandle aHandle, RED4e
                 std::filesystem::current_path().string().c_str());
         if (g_autoRunConfig.enabled)
         {
-            LogWarn("Auto-run armed: delay=%.2fs duration=%.2fs includeAudio=%s fps=%d timeDilation=%.9f closeGame=%s setCaptureSequential=%s value=%s photoModeCapture=%s engineFrameCapture=%s screenshotMatrix=%s nativeRunningState=%s persistentCaptureProbe=%s probeWriterVideoRoot=%s probeVideoRootScreenshot=%s probeAudioCaptureCallback=%s probeAudioSelfRegister=%s probeScreenshotTailMode=%d probeScreenshotTailF3=%s probeScreenshotTailF4=%d",
+            LogWarn("Auto-run armed: delay=%.2fs duration=%.2fs includeAudio=%s fps=%d timeDilation=%.9f closeGame=%s setCaptureSequential=%s value=%s photoModeCapture=%s engineFrameCapture=%s screenshotMatrix=%s screenshotMatrixCase=%d nativeRunningState=%s persistentCaptureProbe=%s probeWriterVideoRoot=%s probeVideoRootScreenshot=%s probeAudioCaptureCallback=%s probeAudioSelfRegister=%s probeScreenshotOutputSubmit=%s probeScreenshotTailMode=%d probeScreenshotTailF3=%s probeScreenshotTailF4=%d",
                     g_autoRunConfig.startDelaySeconds,
                     g_autoRunConfig.durationSeconds,
                     g_autoRunConfig.includeAudio ? "true" : "false",
@@ -41,12 +41,14 @@ RED4EXT_C_EXPORT bool RED4EXT_CALL Main(RED4ext::v1::PluginHandle aHandle, RED4e
                     g_autoRunConfig.photoModeCapture ? "true" : "false",
                     g_autoRunConfig.engineFrameCapture ? "true" : "false",
                     g_autoRunConfig.screenshotMatrix ? "true" : "false",
+                    g_autoRunConfig.screenshotMatrixCase,
                     g_autoRunConfig.nativeRunningStateTrigger ? "true" : "false",
                     g_autoRunConfig.persistentCaptureProbe ? "true" : "false",
                     g_autoRunConfig.probeWriterVideoRoot ? "true" : "false",
                     g_autoRunConfig.probeVideoRootScreenshot ? "true" : "false",
                     g_autoRunConfig.probeAudioCaptureCallback ? "true" : "false",
                     g_autoRunConfig.probeAudioSelfRegister ? "true" : "false",
+                    g_autoRunConfig.probeScreenshotOutputSubmit ? "true" : "false",
                     g_autoRunConfig.probeScreenshotTailMode,
                     g_autoRunConfig.probeScreenshotTailF3 ? "true" : "false",
                     g_autoRunConfig.probeScreenshotTailF4);
@@ -62,6 +64,9 @@ RED4EXT_C_EXPORT bool RED4EXT_CALL Main(RED4ext::v1::PluginHandle aHandle, RED4e
         StopActiveCapture();
         StopAudioSidecarCapture();
         WaitCaptureOutputFinalizer();
+        DetachImageSavingJobProbe();
+        DetachScreenshotOutputSubmitProbe();
+        DetachScreenshotFileProbe();
         DetachAudioCaptureCallbackProbe();
         LogInfo("Unloaded.");
         break;

@@ -27,6 +27,7 @@ add_library(RedFrame SHARED
     src/Plugin.cpp
     src/PluginState.cpp
     src/PublicScriptBindings.cpp
+    src/ScreenshotOutputProbe.cpp
     src/ScreenshotService.cpp
     src/ScriptApi.cpp
     src/Internal.hpp

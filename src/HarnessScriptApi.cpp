@@ -43,6 +43,15 @@ void RegisterHarnessScriptApi(RED4ext::CRTTISystem* aRtti, RED4ext::CBaseFunctio
     }
 
     {
+        auto* func = RED4ext::CGlobalFunction::Create("RedFrameHarnessRunScreenshotMatrix",
+                                                      "RedFrameHarnessRunScreenshotMatrix",
+                                                      &RedFrameAutoRunScreenshotMatrix);
+        func->flags = flags;
+        func->SetReturnType("Bool");
+        rtti->RegisterFunction(func);
+    }
+
+    {
         auto* func =
             RED4ext::CGlobalFunction::Create("RedFrameHarnessIsEnabled", "RedFrameHarnessIsEnabled", &RedFrameIsAutoRunEnabled);
         func->flags = flags;

@@ -48,7 +48,8 @@ void PostRegisterTypes()
         func->AddParam("ESaveFormat", "saveFormat");
         func->AddParam("renddimEPreset", "resolution");
         func->AddParam("rendResolutionMultiplier", "resolutionMultiplier");
-        func->AddParam("Bool", "forceLOD0");
+        func->AddParam("Bool", "forceLOD0", false, true);
+        func->AddParam("EEnvManagerModifier", "emmMode", false, true);
         g_screenshotApiClass.RegisterFunction(func);
     }
 

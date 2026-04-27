@@ -31,12 +31,31 @@ local resolutionMultipliers = {
     { label = "X4", valueName = "X4" },
 }
 
+local emmModes = {
+    { label = "None", valueName = "EMM_None" },
+    { label = "Clay", valueName = "EMM_ClayView" },
+    { label = "Pure Greyscale", valueName = "EMM_PureGreyscaleView" },
+    { label = "Pure White", valueName = "EMM_PureWhiteView" },
+    { label = "Base Color", valueName = "EMM_SurfaceBaseColor" },
+    { label = "Albedo", valueName = "EMM_SurfaceAlbedo" },
+    { label = "Roughness", valueName = "EMM_SurfaceRoughness" },
+    { label = "Metalness", valueName = "EMM_SurfaceMetalness" },
+    { label = "Emissive", valueName = "EMM_SurfaceEmissive" },
+    { label = "Normals World", valueName = "EMM_SurfaceNormalsWorldSpace" },
+    { label = "Normals View", valueName = "EMM_SurfaceNormalsViewSpace" },
+    { label = "Depth", valueName = "EMM_Depth" },
+    { label = "Velocity", valueName = "EMM_VelocityBuffer" },
+    { label = "Mask SSAO", valueName = "EMM_MaskSSAO" },
+    { label = "Pure Reflection", valueName = "EMM_PureReflectionView" },
+}
+
 local state = {
     fps = 0,
     screenshotModeIndex = 1,
     saveFormatIndex = 1,
     resolutionIndex = 1,
     resolutionMultiplierIndex = 1,
+    emmModeIndex = 1,
     forceLOD0 = false,
     status = "Waiting for input.",
     audioActive = false,
@@ -194,29 +213,33 @@ local function takeScreenshot()
     local format = selectedOption(saveFormats, state.saveFormatIndex)
     local resolution = selectedOption(resolutions, state.resolutionIndex)
     local multiplier = selectedOption(resolutionMultipliers, state.resolutionMultiplierIndex)
+    local emmMode = selectedOption(emmModes, state.emmModeIndex)
     local modeValue = getEnumValue(rendScreenshotMode, mode)
     local formatValue = getEnumValue(ESaveFormat, format)
     local resolutionValue = getEnumValue(renddimEPreset, resolution)
     local multiplierValue = getEnumValue(rendResolutionMultiplier, multiplier)
+    local emmModeValue = getEnumValue(EEnvManagerModifier, emmMode)
 
-    if modeValue == nil or formatValue == nil or resolutionValue == nil or multiplierValue == nil then
+    if modeValue == nil or formatValue == nil or resolutionValue == nil or multiplierValue == nil or emmModeValue == nil then
         setStatus("CET enum globals are not available yet.", true)
         return
     end
 
-    local outputPath = string.format("CET/take_%s_%s_%s_%s_%s%s",
+    local outputPath = string.format("CET/take_%s_%s_%s_%s_%s_%s%s",
         timestamp(),
         mode.label,
         format.label,
         resolution.label,
         multiplier.label,
+        emmMode.label:gsub("%s+", "_"),
         format.extension)
     local requestId = screenshotApi().Take(outputPath,
         modeValue,
         formatValue,
         resolutionValue,
         multiplierValue,
-        state.forceLOD0)
+        state.forceLOD0,
+        emmModeValue)
     state.screenshotRequestId = requestId
     refreshState()
     setStatus(string.format("%s screenshot request. id=%d status=%d error=%d path=%s",
@@ -313,6 +336,7 @@ local function drawWindow()
     state.saveFormatIndex = drawEnumCombo("Format", saveFormats, state.saveFormatIndex)
     state.resolutionIndex = drawEnumCombo("Resolution", resolutions, state.resolutionIndex)
     state.resolutionMultiplierIndex = drawEnumCombo("Multiplier", resolutionMultipliers, state.resolutionMultiplierIndex)
+    state.emmModeIndex = drawEnumCombo("EMM", emmModes, state.emmModeIndex)
     state.forceLOD0 = ImGui.Checkbox("Force LOD0", state.forceLOD0)
 
     if ImGui.Button("Set PNG", buttonWidth, 0) then

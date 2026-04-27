@@ -4,7 +4,7 @@ import RedFrame.Screenshot
 
 public class RedFrameBasicCaptureExample {
   public static func CaptureOneScreenshot() -> Int32 {
-    return Screenshot.Take("Examples/example", rendScreenshotMode.NORMAL, ESaveFormat.SF_PNG, renddimEPreset._1280x720, rendResolutionMultiplier.X1, false);
+    return Screenshot.Take("Examples/example", rendScreenshotMode.NORMAL, ESaveFormat.SF_PNG, renddimEPreset._1280x720, rendResolutionMultiplier.X1);
   }
 
   public static func GetScreenshotRequestStatus(requestId: Int32) -> Int32 {
@@ -42,7 +42,7 @@ public class RedFrameScreenshotListenerExample {
   }
 
   public func CaptureOneScreenshot() -> Int32 {
-    return Screenshot.Take("Examples/listener_example", rendScreenshotMode.NORMAL, ESaveFormat.SF_PNG, renddimEPreset._1280x720, rendResolutionMultiplier.X1, false);
+    return Screenshot.Take("Examples/listener_example", rendScreenshotMode.NORMAL, ESaveFormat.SF_PNG, renddimEPreset._1280x720, rendResolutionMultiplier.X1);
   }
 
   public func OnScreenshotFinished(requestId: Int32, status: Int32, error: Int32) -> Void {

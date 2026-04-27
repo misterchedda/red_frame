@@ -44,7 +44,7 @@ Examples for redscript and cet usage under `examples/`
 module RedFrame
 
 public native class Screenshot {
-  public static native func Take(outputPath: String, mode: rendScreenshotMode, saveFormat: ESaveFormat, resolution: renddimEPreset, resolutionMultiplier: rendResolutionMultiplier, forceLOD0: Bool) -> Int32
+  public static native func Take(outputPath: String, mode: rendScreenshotMode, saveFormat: ESaveFormat, resolution: renddimEPreset, resolutionMultiplier: rendResolutionMultiplier, opt forceLOD0: Bool, opt emmMode: EEnvManagerModifier) -> Int32
   public static native func GetRequestStatus(requestId: Int32) -> Int32
   public static native func GetRequestError(requestId: Int32) -> Int32
   public static native func GetRequestPath(requestId: Int32) -> String
@@ -76,7 +76,7 @@ public native class Debug {
 ```swift
 import RedFrame.Screenshot
 
-let requestId = Screenshot.Take("MyMod/shot_0001", rendScreenshotMode.NORMAL, ESaveFormat.SF_PNG, renddimEPreset._1280x720, rendResolutionMultiplier.X1, false);
+let requestId = Screenshot.Take("MyMod/shot_0001", rendScreenshotMode.NORMAL, ESaveFormat.SF_PNG, renddimEPreset._1280x720, rendResolutionMultiplier.X1);
 ```
 
 `Take` returns a request id. A value greater than `0` means the request was
@@ -110,7 +110,8 @@ Screenshot.Take(
   ESaveFormat.SF_PNG,
   renddimEPreset._1280x720,
   rendResolutionMultiplier.X1,
-  false // force LOD0
+  false, // force LOD0
+  EEnvManagerModifier.EMM_None
 );
 ```
 
@@ -123,7 +124,8 @@ Screenshot.Take(
   ESaveFormat.SF_EXR,
   renddimEPreset._1280x720,
   rendResolutionMultiplier.X1,
-  true // force LOD0
+  true, // force LOD0
+  EEnvManagerModifier.EMM_None
 );
 ```
 
@@ -134,11 +136,22 @@ or use engine fallback behavior.
 
 Known useful values:
 
-- modes: `rendScreenshotMode.NORMAL`, `NORMAL_MULTISAMPLE`, `HIGH_RESOLUTION`, `HIGH_RESOLUTION_LAYERED`
-- save formats: `ESaveFormat.SF_PNG`, `SF_EXR`, `SF_PNG_AND_EXR`
-- resolution presets: `renddimEPreset._1280x720`, `_2560x1080`, `_3440x1440`, `_3840x1600`
-- multipliers: `rendResolutionMultiplier.X1`, `X2`, `X4`
+- modes: [`rendScreenshotMode`](https://nativedb.red4ext.com/e/4953059295556816) values such as `NORMAL`, `NORMAL_MULTISAMPLE`, `HIGH_RESOLUTION`, `HIGH_RESOLUTION_LAYERED`
+- save formats: [`ESaveFormat`](https://nativedb.red4ext.com/e/2730838978865828) values such as `SF_PNG`, `SF_EXR`, `SF_PNG_AND_EXR`
+- resolution presets: [`renddimEPreset`](https://nativedb.red4ext.com/e/2483326025215296) values such as `_1280x720`, `_2560x1080`, `_3440x1440`, `_3840x1600`
+- multipliers: [`rendResolutionMultiplier`](https://nativedb.red4ext.com/e/7066925478832773) values such as `X1`, `X2`, `X4`
 - `forceLOD0`: asks the screenshot renderer to prefer highest LOD assets
+- EMM modes: [`EEnvManagerModifier`](https://nativedb.red4ext.com/e/699463329698701) values such as `EMM_None`, `EMM_ClayView`,
+  `EMM_SurfaceBaseColor`, `EMM_SurfaceEmissive`, `EMM_Depth`, etc.
+
+`forceLOD0` and `emmMode` are optional. When omitted, they default to `false`
+and `EEnvManagerModifier.EMM_None`.
+
+`emmMode` selects the renderer's environment/debug output mode for high-res
+captures. Pass `EMM_None` for normal screenshots. Some modes work well, some
+produce dark or unexpected buffers in retail, and
+`HIGH_RESOLUTION_LAYERED` uses the engine's hardcoded layer set rather than the
+single EMM value.
 
 The engine may append suffixes such as `HIGH_RES_EMM_None_None.exr`. Always use
 `GetRequestPath(requestId)` after completion to read the primary actual file

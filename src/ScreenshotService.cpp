@@ -473,7 +473,8 @@ std::int32_t QueueScreenshot(const std::filesystem::path& aOutputPath,
                              const std::int32_t aSaveFormat,
                              const std::int32_t aResolution,
                              const std::int32_t aResolutionMultiplier,
-                             const bool aForceLOD0)
+                             const bool aForceLOD0,
+                             const std::int32_t aEmmMode)
 {
     if (g_autoRunConfig.probeScreenshotOutputSubmit)
     {
@@ -522,16 +523,22 @@ std::int32_t QueueScreenshot(const std::filesystem::path& aOutputPath,
     data->forceLOD0 = aForceLOD0;
     data->saveFormat = static_cast<RED4ext::ESaveFormat>(aSaveFormat);
     data->emmModes = RED4ext::DynArray<RED4ext::EEnvManagerModifier>(RED4ext::Memory::ScriptAllocator::Get());
-    data->emmModes.PushBack(RED4ext::EEnvManagerModifier::EMM_None);
+    const auto emmMode = static_cast<RED4ext::EEnvManagerModifier>(aEmmMode);
+    data->emmModes.PushBack(emmMode);
 
     request.expectedOutputCount = InferExpectedScreenshotOutputCount(*data);
     request.data = std::move(data);
     g_screenshotRequests.push_back(std::move(request));
     engine->TakeScreenshot(*g_screenshotRequests.back().data, false);
 
-    LogInfo("Queued TakeScreenshot request %d -> %s",
+    LogInfo("Queued TakeScreenshot request %d -> %s mode=%d saveFormat=%d resolution=%d multiplier=%d emm=%d",
             g_screenshotRequestIndex,
-            aOutputPath.string().c_str());
+            aOutputPath.string().c_str(),
+            aMode,
+            aSaveFormat,
+            aResolution,
+            aResolutionMultiplier,
+            static_cast<std::int32_t>(emmMode));
     return g_screenshotRequestIndex;
 }
 
@@ -675,6 +682,8 @@ bool QueueScreenshotMatrix()
         {"normal_png_and_exr_m1_f34_r5_x1", ".exr", 1, 34, 5, 1},
         {"hires_layered_png_m6_f2_r5_x1", ".png", 6, 2, 5, 1},
         {"hires_layered_png_and_exr_m6_f34_r5_x1", ".exr", 6, 34, 5, 1},
+        {"hires_normals_world_exr_m5_f32_r5_x1", ".exr", 5, 32, 5, 1},
+        {"hires_normals_view_exr_m5_f32_r5_x1", ".exr", 5, 32, 5, 1},
     };
 
     char runName[64]{};
@@ -705,12 +714,29 @@ bool QueueScreenshotMatrix()
         ++targetCount;
         const auto& testCase = cases[caseIndex];
         const auto outputPath = outputDirectory / (std::string(testCase.name) + testCase.extension);
+        auto emmMode = g_autoRunConfig.screenshotMatrixEmmMode;
+        if (emmMode < 0)
+        {
+            if (std::string_view(testCase.name).find("normals_world") != std::string_view::npos)
+            {
+                emmMode = static_cast<std::int32_t>(RED4ext::EEnvManagerModifier::EMM_SurfaceNormalsWorldSpace);
+            }
+            else if (std::string_view(testCase.name).find("normals_view") != std::string_view::npos)
+            {
+                emmMode = static_cast<std::int32_t>(RED4ext::EEnvManagerModifier::EMM_SurfaceNormalsViewSpace);
+            }
+            else
+            {
+                emmMode = static_cast<std::int32_t>(RED4ext::EEnvManagerModifier::EMM_None);
+            }
+        }
         const auto requestId = QueueScreenshot(outputPath,
                                                testCase.mode,
                                                testCase.saveFormat,
                                                testCase.resolution,
                                                testCase.multiplier,
-                                               false);
+                                               false,
+                                               emmMode);
         if (requestId > 0)
         {
             ++queuedCount;

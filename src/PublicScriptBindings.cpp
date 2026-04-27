@@ -122,6 +122,7 @@ void RedFrameCaptureScreenshot(RED4ext::IScriptable* aContext, RED4ext::CStackFr
     auto resolution = RED4ext::rend::dim::EPreset::_1280x720;
     auto resolutionMultiplier = RED4ext::rend::ResolutionMultiplier::X1;
     bool forceLOD0 = false;
+    auto emmMode = RED4ext::EEnvManagerModifier::EMM_None;
 
     RED4ext::GetParameter(aFrame, &outputPath);
     RED4ext::GetParameter(aFrame, &mode);
@@ -129,6 +130,7 @@ void RedFrameCaptureScreenshot(RED4ext::IScriptable* aContext, RED4ext::CStackFr
     RED4ext::GetParameter(aFrame, &resolution);
     RED4ext::GetParameter(aFrame, &resolutionMultiplier);
     RED4ext::GetParameter(aFrame, &forceLOD0);
+    RED4ext::GetParameter(aFrame, &emmMode);
     aFrame->code++;
 
     const auto resolvedPath = ResolvePublicAdvancedScreenshotPath(outputPath);
@@ -148,7 +150,8 @@ void RedFrameCaptureScreenshot(RED4ext::IScriptable* aContext, RED4ext::CStackFr
                                            static_cast<std::int32_t>(saveFormat),
                                            static_cast<std::int32_t>(resolution),
                                            static_cast<std::int32_t>(resolutionMultiplier),
-                                           forceLOD0);
+                                           forceLOD0,
+                                           static_cast<std::int32_t>(emmMode));
     if (requestId <= 0)
     {
         g_screenshotLastError = kCaptureErrorScreenshotFailed;

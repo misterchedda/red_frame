@@ -1,7 +1,7 @@
 module RedFrame
 
 public native class Screenshot {
-  public static native func Take(outputPath: String, mode: rendScreenshotMode, saveFormat: ESaveFormat, resolution: renddimEPreset, resolutionMultiplier: rendResolutionMultiplier, forceLOD0: Bool) -> Int32
+  public static native func Take(outputPath: String, mode: rendScreenshotMode, saveFormat: ESaveFormat, resolution: renddimEPreset, resolutionMultiplier: rendResolutionMultiplier, opt forceLOD0: Bool, opt emmMode: EEnvManagerModifier) -> Int32
   public static native func GetRequestStatus(requestId: Int32) -> Int32
   public static native func GetRequestError(requestId: Int32) -> Int32
   public static native func GetRequestPath(requestId: Int32) -> String

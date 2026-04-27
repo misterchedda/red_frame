@@ -113,6 +113,7 @@ struct AutoRunConfig
     bool probeAudioSelfRegister = false;
     bool probeScreenshotOutputSubmit = false;
     std::int32_t screenshotMatrixCase = -1;
+    std::int32_t screenshotMatrixEmmMode = -1;
     std::int32_t probeScreenshotTailMode = -1;
     bool probeScreenshotTailF3 = false;
     std::int32_t probeScreenshotTailF4 = 0;
@@ -462,7 +463,7 @@ void PumpScreenshotRequests();
 std::int32_t RegisterScreenshotListener(const RED4ext::Handle<RED4ext::IScriptable>& aTarget, RED4ext::CName aFunctionName);
 bool UnregisterScreenshotListener(std::int32_t aListenerId);
 void ClearScreenshotListeners();
-std::int32_t QueueScreenshot(const std::filesystem::path& aOutputPath, std::int32_t aMode, std::int32_t aSaveFormat, std::int32_t aResolution, std::int32_t aResolutionMultiplier, bool aForceLOD0);
+std::int32_t QueueScreenshot(const std::filesystem::path& aOutputPath, std::int32_t aMode, std::int32_t aSaveFormat, std::int32_t aResolution, std::int32_t aResolutionMultiplier, bool aForceLOD0, std::int32_t aEmmMode = 0);
 bool QueueDefaultRootScreenshot(bool aVideoRoot);
 bool QueueProbeScreenshot();
 bool QueueScreenshotMatrix();

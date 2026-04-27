@@ -112,6 +112,12 @@ AutoRunConfig LoadAutoRunConfigFromEnvironment()
         config.screenshotMatrixCase = ParseEnvironmentInt32(*screenshotMatrixCase, config.screenshotMatrixCase);
     }
 
+    if (const auto screenshotMatrixEmmMode = ReadEnvironmentVariable("REDFRAME_SCREENSHOT_MATRIX_EMM_MODE"))
+    {
+        config.screenshotMatrixEmmMode =
+            ParseEnvironmentInt32(*screenshotMatrixEmmMode, config.screenshotMatrixEmmMode);
+    }
+
     if (const auto probeScreenshotTailMode = ReadEnvironmentVariable("REDFRAME_PROBE_SCREENSHOT_TAIL_MODE"))
     {
         config.probeScreenshotTailMode =
